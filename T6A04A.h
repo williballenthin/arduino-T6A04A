@@ -1,4 +1,4 @@
-#ifndef T6A04A
+#ifndef T6A04A_H
 #define T6A04A_H
 
 #include <Arduino.h>
