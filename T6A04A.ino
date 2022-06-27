@@ -64,7 +64,9 @@ void setup()
 
     Serial.println("init done");
 
+    //
     // demonstrate status read
+    //
     Status s = canvas.inner.read_status();
 
     if (s.counter_direction() != Direction::ROW) {
@@ -81,6 +83,28 @@ void setup()
 
     if (s.is_busy()) {
         Serial.println("unexpected busy");
+    }
+
+    //
+    // demonstrate reading from LCD memory
+    //
+    canvas.inner.set_row(1);
+    canvas.inner.set_column(1);
+    canvas.inner.write_word(0b10101010);
+    canvas.inner.write_word(0b11111111);
+
+    canvas.inner.set_row(1);
+    canvas.inner.set_column(1);
+    // must read a dummy value after changing an address
+    //
+    u8 dummy = canvas.inner.read_word();
+
+    if (0b10101010 != canvas.inner.read_word()) {
+        Serial.println("unexpected value at (1, 1)");
+    }
+
+    if (0b11111111 != canvas.inner.read_word()) {
+        Serial.println("unexpected value at (2, 1)");
     }
 
     Serial.println("checks done");

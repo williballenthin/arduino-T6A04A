@@ -40,6 +40,11 @@ typedef enum WriteMode {
     DATA = 2,
 } WriteMode;
 
+typedef enum ReadMode {
+    STATUS = 1,
+    DATA = 2,
+} ReadMode;
+
 typedef enum Direction {
     COLUMN = 1,
     ROW = 2,
@@ -125,6 +130,8 @@ private:
 
         digitalWrite(this->ce, LOW);
         digitalWrite(this->di, di);
+        digitalWrite(this->rw, LOW);
+        this->set_bus_mode(OUTPUT);
 
         digitalWrite(this->d0, HIGH && (v & B00000001));
         digitalWrite(this->d1, HIGH && (v & B00000010));
@@ -168,6 +175,48 @@ private:
 
             this->io_mode = m;
         }
+    }
+
+    u8 read(ReadMode m)
+    {
+        digitalWrite(this->ce, LOW);
+        if (ReadMode::STATUS == m) {
+            digitalWrite(this->di, LOW);
+        } else if (ReadMode::DATA == m) {
+            digitalWrite(this->di, HIGH);
+        } else {
+            abort();
+        }
+        digitalWrite(this->rw, HIGH);
+        this->set_bus_mode(INPUT);
+
+        digitalWrite(this->ce, HIGH);
+
+        // "As mentioned, a 10 microsecond delay is required after sending the command"
+        // via: https://wikiti.brandonw.net/index.php?title=83Plus:Ports:10
+        delayMicroseconds(10);
+
+        const u8 d0 = digitalRead(this->d0);
+        const u8 d1 = digitalRead(this->d1);
+        const u8 d2 = digitalRead(this->d2);
+        const u8 d3 = digitalRead(this->d3);
+        const u8 d4 = digitalRead(this->d4);
+        const u8 d5 = digitalRead(this->d5);
+        const u8 d6 = digitalRead(this->d6);
+        const u8 d7 = digitalRead(this->d7);
+
+        digitalWrite(this->ce, LOW);
+
+        return (
+            (d7 << 7) | 
+            (d6 << 6) | 
+            (d5 << 5) | 
+            (d4 << 4) | 
+            (d3 << 3) | 
+            (d2 << 2) | 
+            (d1 << 1) | 
+            d0
+        );
     }
 
 public:
@@ -413,40 +462,30 @@ public:
     // command: STRD
     Status read_status()
     {
-        digitalWrite(this->ce, LOW);
-        digitalWrite(this->di, LOW);
-        digitalWrite(this->rw, HIGH);
-        this->set_bus_mode(INPUT);
+        return Status(this->read(ReadMode::STATUS));
+    }
 
-        digitalWrite(this->ce, HIGH);
-
-        // "As mentioned, a 10 microsecond delay is required after sending the command"
-        // via: https://wikiti.brandonw.net/index.php?title=83Plus:Ports:10
-        delayMicroseconds(10);
-
-        const u8 d0 = digitalRead(this->d0);
-        const u8 d1 = digitalRead(this->d1);
-        const u8 d2 = digitalRead(this->d2);
-        const u8 d3 = digitalRead(this->d3);
-        const u8 d4 = digitalRead(this->d4);
-        const u8 d5 = digitalRead(this->d5);
-        const u8 d6 = digitalRead(this->d6);
-        const u8 d7 = digitalRead(this->d7);
-
-        digitalWrite(this->ce, LOW);
-        digitalWrite(this->rw, LOW);
-        this->set_bus_mode(OUTPUT);
-
-        return Status(
-            (d7 << 7) | 
-            (d6 << 6) | 
-            (d5 << 5) | 
-            (d4 << 4) | 
-            (d3 << 3) | 
-            (d2 << 2) | 
-            (d1 << 1) | 
-            d0
-        );
+    // read a word of data from the current address.
+    // write a word of data to the LCD, left-to-right.
+    // MSB is the leftmost pixel, LSB is the rightmost pixel.
+    //
+    // changing the word-width via `set_word_length` will affect the unit.
+    //
+    // the internal counter dictates how the address is incremented after a read.
+    // see `set_counter_direction` for more information.
+    //
+    // after changing the address, ensure you read a dummy value first:
+    //
+    // > However, when a data read is executed, the correct data does not appear on the first 
+    // > data reading. Therefore, ensure that the T6A04A performs a dummy data read before
+    // > reading the actual data. 
+    //
+    // once the dummy value is read, its ok to read multiple times.
+    //
+    // command: DARD
+    u8 read_word()
+    {
+        return this->read(ReadMode::DATA);
     }
 };
 
