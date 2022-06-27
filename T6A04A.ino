@@ -37,37 +37,35 @@
 #define LCD_D0 D11
 #define LCD_RW D12
 
-static PixelCanvas canvas(
-    T6A04A(
-        LCD_RST,
-        LCD_STB,
-        LCD_DI,
-        LCD_CE,
-        LCD_D7,
-        LCD_D6,
-        LCD_D5,
-        LCD_D4,
-        LCD_D3,
-        LCD_D2,
-        LCD_D1,
-        LCD_D0,
-        LCD_RW
-    )
+static T6A04A lcd(
+    LCD_RST,
+    LCD_STB,
+    LCD_DI,
+    LCD_CE,
+    LCD_D7,
+    LCD_D6,
+    LCD_D5,
+    LCD_D4,
+    LCD_D3,
+    LCD_D2,
+    LCD_D1,
+    LCD_D0,
+    LCD_RW
 );
 
 void setup()
 {
     Serial.begin(9600);
 
-    canvas.init();
-    canvas.clear();
+    lcd.init();
+    lcd.clear();
 
     Serial.println("init done");
 
     //
     // demonstrate status read
     //
-    Status s = canvas.inner.read_status();
+    Status s = lcd.read_status();
 
     if (s.counter_direction() != Direction::ROW) {
         Serial.println("unexpected counter direction");
@@ -88,22 +86,21 @@ void setup()
     //
     // demonstrate reading from LCD memory
     //
-    canvas.inner.set_row(1);
-    canvas.inner.set_column(1);
-    canvas.inner.write_word(0b10101010);
-    canvas.inner.write_word(0b11111111);
+    lcd.set_row(1);
+    lcd.set_column(1);
+    lcd.write_word(0b10101010);
+    lcd.write_word(0b11111111);
 
-    canvas.inner.set_row(1);
-    canvas.inner.set_column(1);
+    lcd.set_row(1);
+    lcd.set_column(1);
     // must read a dummy value after changing an address
-    //
-    u8 dummy = canvas.inner.read_word();
+    u8 dummy = lcd.read_word();
 
-    if (0b10101010 != canvas.inner.read_word()) {
+    if (0b10101010 != lcd.read_word()) {
         Serial.println("unexpected value at (1, 1)");
     }
 
-    if (0b11111111 != canvas.inner.read_word()) {
+    if (0b11111111 != lcd.read_word()) {
         Serial.println("unexpected value at (2, 1)");
     }
 
@@ -118,11 +115,11 @@ void loop()
         Serial.println("on");
 
         for (u8 i = 0; i < 64; i++) {
-            canvas.write_pixel(i, i, true);
+            lcd.write_pixel(i, i, true);
         }
     } else {
         Serial.println("off");
-        canvas.clear();
+        lcd.clear();
     }
 
     is_on = !is_on;

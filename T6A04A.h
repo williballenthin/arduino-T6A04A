@@ -36,13 +36,13 @@ const u8 RW_WRITE = LOW;
 const u8 RW_READ = HIGH;
 
 typedef enum WriteMode {
-    INSTRUCTION = 1,
-    DATA = 2,
+    WRITE_INSTRUCTION = 1,
+    WRITE_DATA = 2,
 } WriteMode;
 
 typedef enum ReadMode {
-    STATUS = 1,
-    DATA = 2,
+    READ_STATUS = 1,
+    READ_DATA = 2,
 } ReadMode;
 
 typedef enum Direction {
@@ -120,9 +120,9 @@ private:
     void write(WriteMode m, u8 v)
     {
         bool di = 0;
-        if (m == WriteMode::INSTRUCTION) {
+        if (m == WriteMode::WRITE_INSTRUCTION) {
             di = LOW;
-        } else if (m == WriteMode::DATA) {
+        } else if (m == WriteMode::WRITE_DATA) {
             di = HIGH;
         } else {
             abort();
@@ -153,12 +153,12 @@ private:
 
     void write_instruction(u8 v)
     {
-        write(WriteMode::INSTRUCTION, v);
+        write(WriteMode::WRITE_INSTRUCTION, v);
     }
 
     void write_data(u8 v)
     {
-        write(WriteMode::DATA, v);
+        write(WriteMode::WRITE_DATA, v);
     }
 
     void set_bus_mode(IOMode m)
@@ -180,9 +180,9 @@ private:
     u8 read(ReadMode m)
     {
         digitalWrite(this->ce, LOW);
-        if (ReadMode::STATUS == m) {
+        if (ReadMode::READ_STATUS == m) {
             digitalWrite(this->di, LOW);
-        } else if (ReadMode::DATA == m) {
+        } else if (ReadMode::READ_DATA == m) {
             digitalWrite(this->di, HIGH);
         } else {
             abort();
@@ -462,7 +462,7 @@ public:
     // command: STRD
     Status read_status()
     {
-        return Status(this->read(ReadMode::STATUS));
+        return Status(this->read(ReadMode::READ_STATUS));
     }
 
     // read a word of data from the current address.
@@ -485,7 +485,41 @@ public:
     // command: DARD
     u8 read_word()
     {
-        return this->read(ReadMode::DATA);
+        return this->read(ReadMode::READ_DATA);
+    }
+
+    // naive update of a pixel.
+    // note that this isn't really very fast: it must read the current word and the write it back.
+    // if you have RAM to spare, then you should probably maintain a local screen buffer instead.
+    // (but this takes 1024 bytes to represent the entire 64x128 display)
+    void write_pixel(u8 x, u8 y, bool on)
+    {
+        if (x >= X_COUNT || y >= Y_COUNT) {
+            return;
+        }
+
+        u8 row = y;
+        u8 column = x / 8;
+        u8 bit = x % 8;
+
+        this->set_row(row);
+        this->set_column(column);
+
+        u8 dummy = this->read_word();
+        u8 existing = this->read_word();
+
+        u8 next = existing;
+        if (on) {
+            next |= (0b10000000 >> bit);
+        } else {
+            next &= ~(0b10000000 >> bit);
+        }
+
+        if (next != existing) {
+            this->set_row(row);
+            this->set_column(column);
+            this->write_word(next);
+        }
     }
 };
 
