@@ -111,18 +111,29 @@ static bool is_on = false;
 
 void loop()
 {
-    if (is_on) {
-        Serial.println("on");
+    for (u8 x = 0; x < X_COUNT; x++) {
+        for (u8 y = 0; y < Y_COUNT; y++) {
+            lcd.write_pixel(x, y, is_on);
+        }
+    }
 
+    if (is_on) {
+
+        //Serial.println("on");
+
+        /*
         for (u8 i = 0; i < 64; i++) {
             lcd.write_pixel(i, i, true);
         }
+        */
     } else {
-        Serial.println("off");
+        //Serial.println("off");
+        /*
         lcd.clear();
+        */
     }
 
     is_on = !is_on;
 
-    delay(1000);
+    //delay(1000);
 }

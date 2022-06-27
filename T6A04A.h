@@ -28,7 +28,7 @@ typedef u8 pin;
 
 const u8 ROW_COUNT = 64;
 const u8 Y_COUNT = ROW_COUNT;
-const u8 X_COUNT = 128;
+const u8 X_COUNT = 96;
 
 const u8 STANDBY_ENABLE = LOW;
 const u8 STANDBY_DISABLE = HIGH;
@@ -488,10 +488,16 @@ public:
         return this->read(ReadMode::READ_DATA);
     }
 
-    // naive update of a pixel.
+    // naive update of a single pixel at a given (x, y) location.
+    //
     // note that this isn't really very fast: it must read the current word and the write it back.
     // if you have RAM to spare, then you should probably maintain a local screen buffer instead.
     // (but this takes 1024 bytes to represent the entire 64x128 display)
+    //
+    // it takes about 4s to update the entire screen using this routine repeatedly,
+    // which is about .6ms/pixel.
+    //
+    // so, for example, if you're targetting 16ms/frame, thats about 26 pixels.
     void write_pixel(u8 x, u8 y, bool on)
     {
         if (x >= X_COUNT || y >= Y_COUNT) {
