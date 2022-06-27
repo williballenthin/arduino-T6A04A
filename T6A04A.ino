@@ -72,7 +72,9 @@ void loop()
     if (is_on) {
         Serial.println("on");
 
-        canvas.write_pixel(2, 2, true);
+        for (u8 i = 0; i < 64; i++) {
+            canvas.write_pixel(i, i, true);
+        }
     } else {
         Serial.println("off");
         canvas.clear();

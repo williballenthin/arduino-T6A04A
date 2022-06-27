@@ -383,7 +383,7 @@ public:
         u8 existing = row[column];
         u8 next = existing;
         if (on) {
-            next |= (0b1000000 >> bit);
+            next |= (0b10000000 >> bit);
         } else {
             next &= ~(0b10000000 >> bit);
         }
