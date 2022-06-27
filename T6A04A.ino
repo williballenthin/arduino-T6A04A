@@ -63,6 +63,27 @@ void setup()
     canvas.clear();
 
     Serial.println("init done");
+
+    // demonstrate status read
+    Status s = canvas.inner.read_status();
+
+    if (s.counter_direction() != Direction::ROW) {
+        Serial.println("unexpected counter direction");
+    }
+
+    if (s.word_length() != WordLength::WORD_LENGTH_8) {
+        Serial.println("unexpected word length");
+    }
+
+    if (!s.is_enabled()) {
+        Serial.println("unexpected status");
+    }
+
+    if (s.is_busy()) {
+        Serial.println("unexpected busy");
+    }
+
+    Serial.println("checks done");
 }
 
 static bool is_on = false;

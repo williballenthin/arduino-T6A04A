@@ -50,6 +50,47 @@ typedef enum WordLength {
     WORD_LENGTH_6 = 2,
 } WordLength;
 
+// used to hold OUTPUT, INPUT
+typedef u8 IOMode;
+
+class Status {
+private:
+    u8 inner;
+public:
+    Status(u8 v) : inner(v) {}
+
+    bool is_busy() const
+    {
+        return (this->inner & 0b10000000) != 0;
+    }
+
+    WordLength word_length() const
+    {
+        if ((this->inner & 0b01000000) != 0) {
+            return WordLength::WORD_LENGTH_8;
+        } else {
+            return WordLength::WORD_LENGTH_6;
+        };
+    }
+
+    bool is_enabled() const
+    {
+        return (this->inner & 0b00100000) != 0;
+    }
+
+    Direction counter_direction() const
+    {
+        if ((this->inner & 0b00000010) != 0) {
+            return Direction::ROW;
+        } else {
+            return Direction::COLUMN;
+        };
+    }
+
+    // up/down is the LSB
+    // 1: up, 0: down
+};
+
 class T6A04A
 {
 private:
@@ -69,6 +110,7 @@ private:
 
     Direction counter_direction;
     WordLength word_length;
+    IOMode io_mode;
 
     void write(WriteMode m, u8 v)
     {
@@ -112,6 +154,22 @@ private:
         write(WriteMode::DATA, v);
     }
 
+    void set_bus_mode(IOMode m)
+    {
+        if (m != this->io_mode) {
+            pinMode(this->d0, m);
+            pinMode(this->d1, m);
+            pinMode(this->d2, m);
+            pinMode(this->d3, m);
+            pinMode(this->d4, m);
+            pinMode(this->d5, m);
+            pinMode(this->d6, m);
+            pinMode(this->d7, m);
+
+            this->io_mode = m;
+        }
+    }
+
 public:
     T6A04A(
         pin rst,
@@ -141,7 +199,8 @@ public:
           d0(d0),
           rw(rw),
           counter_direction(Direction::ROW),
-          word_length(WordLength::WORD_LENGTH_8)
+          word_length(WordLength::WORD_LENGTH_8),
+          io_mode(OUTPUT)
     {
         pinMode(this->ce, OUTPUT);
         pinMode(this->di, OUTPUT);
@@ -349,6 +408,45 @@ public:
 
         this->set_counter_direction(d);
         this->set_word_length(wl);
+    }
+
+    // command: STRD
+    Status read_status()
+    {
+        digitalWrite(this->ce, LOW);
+        digitalWrite(this->di, LOW);
+        digitalWrite(this->rw, HIGH);
+        this->set_bus_mode(INPUT);
+
+        digitalWrite(this->ce, HIGH);
+
+        // "As mentioned, a 10 microsecond delay is required after sending the command"
+        // via: https://wikiti.brandonw.net/index.php?title=83Plus:Ports:10
+        delayMicroseconds(10);
+
+        const u8 d0 = digitalRead(this->d0);
+        const u8 d1 = digitalRead(this->d1);
+        const u8 d2 = digitalRead(this->d2);
+        const u8 d3 = digitalRead(this->d3);
+        const u8 d4 = digitalRead(this->d4);
+        const u8 d5 = digitalRead(this->d5);
+        const u8 d6 = digitalRead(this->d6);
+        const u8 d7 = digitalRead(this->d7);
+
+        digitalWrite(this->ce, LOW);
+        digitalWrite(this->rw, LOW);
+        this->set_bus_mode(OUTPUT);
+
+        return Status(
+            (d7 << 7) | 
+            (d6 << 6) | 
+            (d5 << 5) | 
+            (d4 << 4) | 
+            (d3 << 3) | 
+            (d2 << 2) | 
+            (d1 << 1) | 
+            d0
+        );
     }
 };
 
