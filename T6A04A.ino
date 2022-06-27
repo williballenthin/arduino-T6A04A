@@ -37,30 +37,30 @@
 #define LCD_D0 D11
 #define LCD_RW D12
 
-static T6A04A *lcd = new T6A04A(
-    LCD_RST,
-    LCD_STB,
-    LCD_DI,
-    LCD_CE,
-    LCD_D7,
-    LCD_D6,
-    LCD_D5,
-    LCD_D4,
-    LCD_D3,
-    LCD_D2,
-    LCD_D1,
-    LCD_D0,
-    LCD_RW
+static PixelCanvas canvas(
+    T6A04A(
+        LCD_RST,
+        LCD_STB,
+        LCD_DI,
+        LCD_CE,
+        LCD_D7,
+        LCD_D6,
+        LCD_D5,
+        LCD_D4,
+        LCD_D3,
+        LCD_D2,
+        LCD_D1,
+        LCD_D0,
+        LCD_RW
+    )
 );
-
-static PixelCanvas canvas(lcd);
 
 void setup()
 {
     Serial.begin(9600);
 
-    lcd->init();
-    lcd->clear();
+    canvas.init();
+    canvas.clear();
 
     Serial.println("init done");
 }

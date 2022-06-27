@@ -325,7 +325,7 @@ public:
     }
 
     // naive clear of the LCD by writing zeros to all pixels.
-    // requires around 770 commands, which takes a noticable amount of time.
+    // requires around 860 commands, which takes a noticable amount of time.
     void clear()
     {
         Direction d = this->counter_direction;
@@ -357,10 +357,9 @@ private:
     u8 buffer[Y_COUNT][X_COUNT/8];
 
 public:
-    T6A04A *inner;
+    T6A04A inner;
 
-    // inner must be in 8-bit word length mode.
-    PixelCanvas(T6A04A *inner)
+    PixelCanvas(T6A04A inner)
         : inner(inner)
     {
         for (u8 row = 0; row < Y_COUNT; row++) {
@@ -368,6 +367,13 @@ public:
                 this->buffer[row][column] = 0;
             }
         }
+    }
+
+    void init()
+    {
+        this->inner.init();
+        this->inner.clear();
+        this->inner.set_word_length(WordLength::WORD_LENGTH_8);
     }
 
     void write_pixel(u8 x, u8 y, bool on)
@@ -389,22 +395,24 @@ public:
         }
 
         if (next != existing) {
-            inner->set_row(y);
-            inner->set_column(column);
-            inner->write_word(next);
+            this->inner.set_row(y);
+            this->inner.set_column(column);
+            this->inner.write_word(next);
             row[column] = next;
         }
     }
 
+    // semi-optimized clear of the LCD, writing zeros to only the pixels
+    // that are non-zero.
     void clear()
     {
         for (u8 row = 0; row < Y_COUNT; row++) {
             for (u8 column = 0; column < X_COUNT/8; column++) {
                 if (0 != this->buffer[row][column]) {
                     this->buffer[row][column] = 0;
-                    this->inner->set_row(row);
-                    this->inner->set_column(column);
-                    this->inner->write_word(0b00000000);
+                    this->inner.set_row(row);
+                    this->inner.set_column(column);
+                    this->inner.write_word(0b00000000);
                 }
             }
         }
