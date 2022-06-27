@@ -27,7 +27,8 @@ typedef u8 pin;
 //    17 RW                     D12
 
 const u8 ROW_COUNT = 64;
-const u8 COLUMN_COUNT = 8 * 12;
+const u8 Y_COUNT = ROW_COUNT;
+const u8 X_COUNT = 128;
 
 const u8 STANDBY_ENABLE = LOW;
 const u8 STANDBY_DISABLE = HIGH;
@@ -43,6 +44,11 @@ typedef enum Direction {
     COLUMN = 1,
     ROW = 2,
 } Direction;
+
+typedef enum WordLength {
+    WORD_LENGTH_8 = 1,
+    WORD_LENGTH_6 = 2,
+} WordLength;
 
 class T6A04A
 {
@@ -62,6 +68,7 @@ private:
     pin rw; // pin 17
 
     Direction counter_direction;
+    WordLength word_length;
 
     void write(WriteMode m, u8 v)
     {
@@ -88,10 +95,9 @@ private:
 
         digitalWrite(this->ce, HIGH);
 
-        // I don't know how long the pulse must be,
-        // in practice on an Uno R3, no delay is required.
-        // but we have a trivial delay here for documentation.
-        delayMicroseconds(1);
+        // "As mentioned, a 10 microsecond delay is required after sending the command"
+        // via: https://wikiti.brandonw.net/index.php?title=83Plus:Ports:10
+        delayMicroseconds(10);
 
         digitalWrite(this->ce, LOW);
     }
@@ -104,17 +110,6 @@ private:
     void write_data(u8 v)
     {
         write(WriteMode::DATA, v);
-    }
-
-    // I'm not sure what the alternative to 8-bits is.
-    // perhaps there's a 4-bit mode like described here:
-    //
-    //   https://embedjournal.com/interface-lcd-in-4-bit-mode/
-    //
-    // but this driver relies only on the 8-bit interface.
-    void set_eight_bits()
-    {
-        this->write_instruction(0b00000001);
     }
 
 public:
@@ -145,7 +140,8 @@ public:
           d1(d1),
           d0(d0),
           rw(rw),
-          counter_direction(Direction::ROW)
+          counter_direction(Direction::ROW),
+          word_length(WordLength::WORD_LENGTH_8)
     {
         pinMode(this->ce, OUTPUT);
         pinMode(this->di, OUTPUT);
@@ -172,45 +168,95 @@ public:
     void init() {
         this->reset();
 
-        // this driver only uses the 8-bit interface.
-        this->set_eight_bits();
+        this->set_word_length(WordLength::WORD_LENGTH_8);
 
         this->enable_display();
         this->set_contrast(48);
         this->set_counter_direction(Direction::ROW);
-        this->set_x(0);
-        this->set_y(0);
+        this->set_column(0);
+        this->set_row(0);
+        this->set_z(0);
     }
 
+    // > When /RST = L, the reset function is executed and the following settings are mode. 
+    // > (3)     Display..............................OFF     
+    // > (4)     Word length..........................8 bits/word 
+    // > (5)     Counter mode.........................Y-counter (row-counter)/up mode 
+    // > (6)     Y-(page) address.....................Page = 0 (column 0)
+    // > (7)     X-address............................XAD  = 0 (row 0)
+    // > (8)     Z-address............................ZAD  = 0 
+    // > (9)     Op-amp1 (OPA1) ......................min     
+    // > (10)    Op-amp2 (OPA2) ......................min   
     void reset() {
         digitalWrite(this->rst, LOW);
-        delay(1);
+
+        // "As mentioned, a 10 microsecond delay is required after sending the command"
+        // via: https://wikiti.brandonw.net/index.php?title=83Plus:Ports:10
+        delayMicroseconds(10);
+
         digitalWrite(this->rst, HIGH);
     }
 
+    // set the word length used when write/reading data to the display.
+    // this seems to be useful to update either 8 or 6 bit regions quickly,
+    // e.g. when a character is 8 or 6 pixels wide.
+    //
+    // this doesn't affect the total number of required pins,
+    // only the display word size.
+    //
+    // command: 86E
+    void set_word_length(WordLength wl)
+    {
+        this->word_length = wl;
+        if (wl == WordLength::WORD_LENGTH_8) {
+            this->write_instruction(0b00000001);
+        } else if (wl == WordLength::WORD_LENGTH_6) {
+            this->write_instruction(0b00000000);
+        } else {
+            abort();
+        }
+    }
+
+    // > When /STB = L, the T6A04A is in standby state.
+    // > The internal oscillator is stopped, power consumption is 
+    // > reduced, and the power supply level for the LCD (VLC1 to VLC5) becomes VDD.
     void enable_standby() {
         digitalWrite(this->stb, STANDBY_ENABLE);
     }
 
+    // > When /STB = L, the T6A04A is in standby state.
+    // > The internal oscillator is stopped, power consumption is 
+    // > reduced, and the power supply level for the LCD (VLC1 to VLC5) becomes VDD.
     void disable_standby() {
         digitalWrite(this->stb, STANDBY_DISABLE);
     }
 
+    // > This command sets the contrast for the LCD. 
+    // > The LCD contrast can be set in 64 steps. 
+    //
+    // command: SCE
     void set_contrast(u8 contrast)
     {
         this->write_instruction(0b11000000 | (contrast & 0b00111111));
     }
 
+    // > This command turns display ON/OFF. It does not affect the data in the display RAM.
+    //
+    // command: DPE (ON)
     void enable_display()
     {
         this->write_instruction(0b00000011);
     }
 
+    // > This command turns display ON/OFF. It does not affect the data in the display RAM.
+    //
+    // command: DPE (OFF)
     void disable_display()
     {
         this->write_instruction(0b00000010);
     }
 
+    // TODO: refactor: x/y up/down
     void set_counter_direction(Direction d)
     {
         this->counter_direction = d;
@@ -226,72 +272,99 @@ public:
         }
     }
 
-    // set the x coordinate for subsequent call to `write_byte`.
-    // note that the unit here is in 8-bit bytes, not pixels.
-    void set_x(u8 x)
+    // set the column coordinate for subsequent call to `write_byte`.
+    // column zero is the left-most column.
+    // note that the unit here is in 8 (or 6)-bit bytes, not pixels.
+    //
+    // changing the word-width via `set_word_length` will affect the unit.
+    //
+    // the internal counter dictates how the column is incremented after a write.
+    // see `set_counter_direction` for more information.
+    //
+    // command: SYE
+    void set_column(u8 column)
     {
-        this->write_instruction(0b00100000 | (x & 0b00011111));
+        this->write_instruction(0b00100000 | (column & 0b00011111));
     }
 
-    // set the y coordinate for subsequent calls to `write_byte`.
+    // set the row coordinate for subsequent calls to `write_byte`.
+    // row zero is the top-most row.
     // unit: pixels.
-    void set_y(u8 y)
+    //
+    // the internal counter dictates how the row is incremented after a write.
+    // see `set_counter_direction` for more information.
+    //
+    // command: SXE
+    void set_row(u8 row)
     {
-        this->write_instruction(0b10000000 | (y & 0b00111111));
+        this->write_instruction(0b10000000 | (row & 0b00111111));
     }
 
-    // TODO: i dont understand what z is.
-    // seems to have to do with shifting the screen.
+    // > This command sets the top row of the LCD screen, irrespective of the current [Y]-address.
+    // > For instance, when the Z-address is 32, the top row of the LCD screen is address 32 
+    // > of the display RAM, and the bottom row of the LCD screen is address 31 of the display RAM.
+    //
+    // wb: I believe you use can use this to implement scrolling.
+    //
+    // command: SZE
     void set_z(u8 z)
     {
         this->write_instruction(0b01000000 | (z & 0b00111111));
     }
 
-    // write 8-bits to the LCD, left-to-right.
+    // write a word of data to the LCD, left-to-right.
     // MSB is the leftmost pixel, LSB is the rightmost pixel.
     //
-    // the LCD driver will then increment the counter;
-    // if in COLUMN counter mode, the y coordinate will be incremented by one pixel.
-    // if in ROW counter mode, the x coordinate will be incremented by one byte (8 pixels).
-    void write_byte(u8 v)
+    // changing the word-width via `set_word_length` will affect the unit.
+    //
+    // the internal counter dictates how the address is incremented after a write.
+    // see `set_counter_direction` for more information.
+    void write_word(u8 v)
     {
         this->write_data(v);
     }
 
+    // naive clear of the LCD by writing zeros to all pixels.
+    // requires around 770 commands, which takes a noticable amount of time.
     void clear()
     {
         Direction d = this->counter_direction;
+        WordLength wl = this->word_length;
 
-        if (d == Direction::COLUMN) {
+        if (d != Direction::ROW) {
             this->set_counter_direction(Direction::ROW);
         }
 
+        if (wl != WordLength::WORD_LENGTH_8) {
+            this->set_word_length(WordLength::WORD_LENGTH_8);
+        }
+
         for (int y = 0; y < ROW_COUNT; y++) {
-            this->set_y(y);
-            this->set_x(0);
-            for (int x = 0; x < (COLUMN_COUNT / 8); x++) {
-                this->write_byte(0);
+            this->set_row(y);
+            this->set_column(0);
+            for (int x = 0; x < (X_COUNT / 8); x++) {
+                this->write_word(0b00000000);
             }
         }
 
-        if (d == Direction::COLUMN) {
-            this->set_counter_direction(Direction::COLUMN);
-        }
+        this->set_counter_direction(d);
+        this->set_word_length(wl);
     }
 };
 
 class PixelCanvas {
 private:
-    u8 buffer[ROW_COUNT][COLUMN_COUNT/8];
+    u8 buffer[Y_COUNT][X_COUNT/8];
 
 public:
-    T6A04A inner;
+    T6A04A *inner;
 
-    PixelCanvas(T6A04A inner)
+    // inner must be in 8-bit word length mode.
+    PixelCanvas(T6A04A *inner)
         : inner(inner)
     {
-        for (u8 row = 0; row < ROW_COUNT; row++) {
-            for (u8 column = 0; column < COLUMN_COUNT; column++) {
+        for (u8 row = 0; row < Y_COUNT; row++) {
+            for (u8 column = 0; column < X_COUNT/8; column++) {
                 this->buffer[row][column] = 0;
             }
         }
@@ -299,38 +372,39 @@ public:
 
     void write_pixel(u8 x, u8 y, bool on)
     {
-        if (x >= COLUMN_COUNT || y >= ROW_COUNT) {
+        if (x >= X_COUNT || y >= Y_COUNT) {
             return;
         }
 
-        u8 (&row)[COLUMN_COUNT/8] = (this->buffer[y]);
+        u8 (&row)[X_COUNT/8] = (this->buffer[y]);
         u8 column = x / 8;
         u8 bit = x % 8;
 
         u8 existing = row[column];
         u8 next = existing;
         if (on) {
-            next |= (1 << bit);
+            next |= (0b1000000 >> bit);
         } else {
-            next &= ~(1 << bit);
+            next &= ~(0b10000000 >> bit);
         }
 
         if (next != existing) {
-            inner.set_y(y);
-            inner.set_x(column);
-            inner.write_byte(next);
+            inner->set_row(y);
+            inner->set_column(column);
+            inner->write_word(next);
+            row[column] = next;
         }
     }
 
     void clear()
     {
-        for (u8 row = 0; row < ROW_COUNT; row++) {
-            for (u8 column = 0; column < COLUMN_COUNT/8; column++) {
+        for (u8 row = 0; row < Y_COUNT; row++) {
+            for (u8 column = 0; column < X_COUNT/8; column++) {
                 if (0 != this->buffer[row][column]) {
                     this->buffer[row][column] = 0;
-                    this->inner.set_y(row);
-                    this->inner.set_x(column);
-                    this->inner.write_byte(0x00);
+                    this->inner->set_row(row);
+                    this->inner->set_column(column);
+                    this->inner->write_word(0b00000000);
                 }
             }
         }
