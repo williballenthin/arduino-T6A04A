@@ -2,6 +2,7 @@
 #define T6A04A_H
 
 #include <Arduino.h>
+#include <Adafruit_GFX.h>
 
 typedef unsigned char u8;
 typedef u8 pin;
@@ -96,7 +97,7 @@ public:
     // 1: up, 0: down
 };
 
-class T6A04A
+class T6A04A : public Adafruit_GFX
 {
 private:
     pin rst; // pin 3
@@ -249,7 +250,8 @@ public:
           rw(rw),
           counter_direction(Direction::ROW),
           word_length(WordLength::WORD_LENGTH_8),
-          io_mode(OUTPUT)
+          io_mode(OUTPUT),
+          Adafruit_GFX(96, 64)
     {
         pinMode(this->ce, OUTPUT);
         pinMode(this->di, OUTPUT);
@@ -526,6 +528,15 @@ public:
             this->set_column(column);
             this->write_word(next);
         }
+    }
+
+    virtual void drawPixel(int16_t x, int16_t y, uint16_t color)
+    {
+        if (x < 0 || x >= X_COUNT || y < 0 || y >= Y_COUNT) {
+            return;
+        }
+
+        this->write_pixel(x, y, color != 0);
     }
 };
 

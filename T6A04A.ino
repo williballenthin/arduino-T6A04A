@@ -104,6 +104,7 @@ void setup()
         Serial.println("unexpected value at (2, 1)");
     }
 
+    lcd.clear();
     Serial.println("checks done");
 }
 
@@ -111,29 +112,25 @@ static bool is_on = false;
 
 void loop()
 {
+    /*
+    // fill screen. takes about 4s to complete.
     for (u8 x = 0; x < X_COUNT; x++) {
         for (u8 y = 0; y < Y_COUNT; y++) {
             lcd.write_pixel(x, y, is_on);
         }
     }
+    */
 
-    if (is_on) {
+    lcd.drawLine(0, 0, X_COUNT, Y_COUNT, is_on);
+    lcd.drawLine(X_COUNT, 0, 0, Y_COUNT, is_on);
 
-        //Serial.println("on");
+    lcd.setCursor(1, 1);
+    lcd.setTextColor(1);
+    lcd.setTextSize(1);
+    lcd.setTextWrap(true);
 
-        /*
-        for (u8 i = 0; i < 64; i++) {
-            lcd.write_pixel(i, i, true);
-        }
-        */
-    } else {
-        //Serial.println("off");
-        /*
-        lcd.clear();
-        */
-    }
+    lcd.println("Hello, world!");
 
     is_on = !is_on;
-
-    //delay(1000);
+    delay(1000);
 }
