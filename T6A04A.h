@@ -1,6 +1,7 @@
 /*
  * TODO:
  *  - refactor counter handling
+ *  - drawFastHLine: pre-read/write sequentially
  *  - drawFastVLine
  *  - drawRect
  */
@@ -140,7 +141,7 @@ private:
 
         digitalWrite(this->ce, LOW);
         digitalWrite(this->di, di);
-        digitalWrite(this->rw, LOW);
+        digitalWrite(this->rw, RW_WRITE);
         this->set_bus_mode(OUTPUT);
 
         digitalWrite(this->d0, HIGH && (v & B00000001));
@@ -197,7 +198,7 @@ private:
         } else {
             abort();
         }
-        digitalWrite(this->rw, HIGH);
+        digitalWrite(this->rw, RW_READ);
         this->set_bus_mode(INPUT);
 
         digitalWrite(this->ce, HIGH);
@@ -227,6 +228,15 @@ private:
             (d1 << 1) | 
             d0
         );
+    }
+
+    // turn the given index on/off within the given word.
+    static inline u8 paint_pixel(u8 word, u8 index, bool color) {
+        if (color) {
+            return word | (0b10000000 >> index);
+        } else {
+            return word & ~(0b10000000 >> index);
+        }
     }
 
 public:
@@ -279,9 +289,6 @@ public:
         digitalWrite(this->rst, HIGH);
 
         digitalWrite(this->stb, STANDBY_DISABLE);
-
-        // unknown how to read from the LCD, so all operations are write in this driver.
-        digitalWrite(this->rw, RW_WRITE);
     }
 
     void init() {
@@ -521,55 +528,6 @@ public:
         return this->bus_read(ReadMode::READ_DATA);
     }
 
-    // turn the given index on/off within the given word.
-    static u8 paint_pixel(u8 word, u8 index, bool color) {
-        if (color) {
-            return word | (0b10000000 >> index);
-        } else {
-            return word & ~(0b10000000 >> index);
-        }
-    }
-
-    // naive update of a single pixel at a given (x, y) location.
-    //
-    // note that this isn't really very fast: it must read the current word and the write it back.
-    // if you have RAM to spare, then you should probably maintain a local screen buffer instead.
-    // (but this takes 1024 bytes to represent the entire 64x128 display)
-    //
-    // it takes about 4s to update the entire screen using this routine repeatedly,
-    // which is about .6ms/pixel.
-    //
-    // so, for example, if you're targetting 16ms/frame, thats about 26 pixels.
-    //
-    // cost: seven bus operations
-    void write_pixel(u8 x, u8 y, bool on)
-    {
-        if (x >= X_COUNT || y >= Y_COUNT) {
-            return;
-        }
-
-        u8 row = y;
-        u8 column = x / 8;
-        u8 bit = x % 8;
-
-        u8 existing = this->read_word_at(row, column);
-
-        u8 next = paint_pixel(existing, bit, on);
-
-        if (next != existing) {
-            this->write_word_at(row, column, next);
-        }
-    }
-
-    virtual void drawPixel(int16_t x, int16_t y, uint16_t color) override
-    {
-        if (x < 0 || x >= X_COUNT || y < 0 || y >= Y_COUNT) {
-            return;
-        }
-
-        this->write_pixel(x, y, color != 0);
-    }
-
     // read the word at the given coordinates.
     //
     // use only if you expect the coordinates to differ from the current adddress,
@@ -599,6 +557,49 @@ public:
         this->write_word(word);
     }
 
+    // naive update of a single pixel at a given (x, y) location.
+    //
+    // note that this isn't really very fast: it must read the current word and the write it back.
+    // if you have RAM to spare, then you should probably maintain a local screen buffer instead.
+    // (but this takes 1024 bytes to represent the entire 64x128 display)
+    //
+    // it takes about 4s to update the entire screen using this routine repeatedly,
+    // which is about .6ms/pixel.
+    //
+    // so, for example, if you're targetting 16ms/frame, thats about 26 pixels.
+    //
+    // cost: seven bus operations
+    void write_pixel(u8 x, u8 y, bool on)
+    {
+        if (x >= X_COUNT || y >= Y_COUNT) {
+            return;
+        }
+
+        u8 row = y;
+        u8 column = x / 8;
+        u8 bit = x % 8;
+
+        u8 existing = this->read_word_at(row, column);
+
+        u8 next = this->paint_pixel(existing, bit, on);
+
+        if (next != existing) {
+            this->write_word_at(row, column, next);
+        }
+    }
+
+    virtual void drawPixel(int16_t x, int16_t y, uint16_t color) override
+    {
+        if (x < 0 || x >= X_COUNT || y < 0 || y >= Y_COUNT) {
+            return;
+        }
+
+        this->write_pixel(x, y, color != 0);
+    }
+
+    // TODO: we can make this even faster by pre-reading the line sequentially
+    // and then writing it back on sequentially,
+    // at the expense of one byte allocation per word touched (max 12 bytes).
     virtual void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) override
     {
         if (w == 0) {
@@ -652,7 +653,7 @@ public:
             u8 word = this->read_word_at(row, column);
 
             for (u8 i = left_pixel; i < right_pixel; i++) {
-                word = paint_pixel(word, i, 0 != color);
+                word = this->paint_pixel(word, i, 0 != color);
                 x += 1;
             }
 
@@ -677,7 +678,7 @@ public:
                 u8 left_word = this->read_word_at(row, left_column);
 
                 for (u8 i = left_pixel; i < 8; i++) {
-                    left_word = paint_pixel(left_word, i, 0 != color);
+                    left_word = this->paint_pixel(left_word, i, 0 != color);
                     x += 1;
                 }
 
@@ -712,7 +713,7 @@ public:
                 u8 right_word = this->read_word_at(row, right_column);
 
                 for (u8 i = 0; i < right_pixel; i++) {
-                    right_word = paint_pixel(right_word, i, 0 != color);
+                    right_word = this->paint_pixel(right_word, i, 0 != color);
                     x += 1;
                 }
 
