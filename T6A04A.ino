@@ -53,84 +53,44 @@ static T6A04A lcd(
     LCD_RW
 );
 
+// 6 pixels wide, 8 pixels tall
+const u8 CHARACTER_WIDTH = 6;
+const u8 CHARACTER_HEIGHT = 8;
+
+#include "opt.h"
+
 void setup()
 {
     Serial.begin(9600);
+    //run_benchmarks(&lcd);
 
     lcd.init();
     lcd.clear();
 
-    Serial.println("init done");
+    u8 y = 0;
 
-    //
-    // demonstrate status read
-    //
-    Status s = lcd.read_status();
-
-    if (s.counter_direction() != Direction::ROW) {
-        Serial.println("unexpected counter direction");
+    for (u8 i = 0; i < 16; i++) {
+        lcd.drawFastHLine(0, y, i, true);
+        y++;
     }
 
-    if (s.word_length() != WordLength::WORD_LENGTH_8) {
-        Serial.println("unexpected word length");
+    for (u8 i = 0; i < 16; i++) {
+        lcd.drawFastHLine(2, y, i, true);
+        y++;
     }
 
-    if (!s.is_enabled()) {
-        Serial.println("unexpected status");
+    for (u8 i = 0; i < 16; i++) {
+        lcd.drawFastHLine(8, y, i, true);
+        y++;
     }
 
-    if (s.is_busy()) {
-        Serial.println("unexpected busy");
-    }
-
-    //
-    // demonstrate reading from LCD memory
-    //
-    lcd.set_row(1);
-    lcd.set_column(1);
-    lcd.write_word(0b10101010);
-    lcd.write_word(0b11111111);
-
-    lcd.set_row(1);
-    lcd.set_column(1);
-    // must read a dummy value after changing an address
-    u8 dummy = lcd.read_word();
-
-    if (0b10101010 != lcd.read_word()) {
-        Serial.println("unexpected value at (1, 1)");
-    }
-
-    if (0b11111111 != lcd.read_word()) {
-        Serial.println("unexpected value at (2, 1)");
-    }
-
-    lcd.clear();
-    Serial.println("checks done");
+    lcd.drawPixel(8, 0, true);
+    lcd.drawPixel(16, 0, true);
+    lcd.drawPixel(24, 0, true);
+    lcd.drawPixel(32, 0, true);
 }
-
-static bool is_on = false;
 
 void loop()
 {
-    /*
-    // fill screen. takes about 4s to complete.
-    for (u8 x = 0; x < X_COUNT; x++) {
-        for (u8 y = 0; y < Y_COUNT; y++) {
-            lcd.write_pixel(x, y, is_on);
-        }
-    }
-    */
-
-    lcd.drawLine(0, 0, X_COUNT, Y_COUNT, is_on);
-    lcd.drawLine(X_COUNT, 0, 0, Y_COUNT, is_on);
-
-    lcd.setCursor(1, 1);
-    lcd.setTextColor(1);
-    lcd.setTextSize(1);
-    lcd.setTextWrap(true);
-
-    lcd.println("Hello, world!");
-
-    is_on = !is_on;
     delay(1000);
 }

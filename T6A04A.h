@@ -1,3 +1,10 @@
+/*
+ * TODO:
+ *  - refactor counter handling
+ *  - drawFastVLine
+ *  - drawRect
+ */
+
 #ifndef T6A04A_H
 #define T6A04A_H
 
@@ -97,6 +104,8 @@ public:
     // 1: up, 0: down
 };
 
+
+
 class T6A04A : public Adafruit_GFX
 {
 private:
@@ -118,7 +127,7 @@ private:
     WordLength word_length;
     IOMode io_mode;
 
-    void write(WriteMode m, u8 v)
+    void bus_write(WriteMode m, u8 v)
     {
         bool di = 0;
         if (m == WriteMode::WRITE_INSTRUCTION) {
@@ -154,12 +163,12 @@ private:
 
     void write_instruction(u8 v)
     {
-        write(WriteMode::WRITE_INSTRUCTION, v);
+        this->bus_write(WriteMode::WRITE_INSTRUCTION, v);
     }
 
     void write_data(u8 v)
     {
-        write(WriteMode::WRITE_DATA, v);
+        this->bus_write(WriteMode::WRITE_DATA, v);
     }
 
     void set_bus_mode(IOMode m)
@@ -178,7 +187,7 @@ private:
         }
     }
 
-    u8 read(ReadMode m)
+    u8 bus_read(ReadMode m)
     {
         digitalWrite(this->ce, LOW);
         if (ReadMode::READ_STATUS == m) {
@@ -315,6 +324,8 @@ public:
     // only the display word size.
     //
     // command: 86E
+    //
+    // cost: one bus operation
     void set_word_length(WordLength wl)
     {
         this->word_length = wl;
@@ -345,6 +356,8 @@ public:
     // > The LCD contrast can be set in 64 steps. 
     //
     // command: SCE
+    //
+    // cost: one bus operation
     void set_contrast(u8 contrast)
     {
         this->write_instruction(0b11000000 | (contrast & 0b00111111));
@@ -353,6 +366,8 @@ public:
     // > This command turns display ON/OFF. It does not affect the data in the display RAM.
     //
     // command: DPE (ON)
+    //
+    // cost: one bus operation
     void enable_display()
     {
         this->write_instruction(0b00000011);
@@ -361,6 +376,8 @@ public:
     // > This command turns display ON/OFF. It does not affect the data in the display RAM.
     //
     // command: DPE (OFF)
+    //
+    // cost: one bus operation
     void disable_display()
     {
         this->write_instruction(0b00000010);
@@ -392,6 +409,8 @@ public:
     // see `set_counter_direction` for more information.
     //
     // command: SYE
+    //
+    // cost: one bus operation
     void set_column(u8 column)
     {
         this->write_instruction(0b00100000 | (column & 0b00011111));
@@ -405,6 +424,8 @@ public:
     // see `set_counter_direction` for more information.
     //
     // command: SXE
+    //
+    // cost: one bus operation
     void set_row(u8 row)
     {
         this->write_instruction(0b10000000 | (row & 0b00111111));
@@ -417,6 +438,8 @@ public:
     // wb: I believe you use can use this to implement scrolling.
     //
     // command: SZE
+    //
+    // cost: one bus operation
     void set_z(u8 z)
     {
         this->write_instruction(0b01000000 | (z & 0b00111111));
@@ -429,6 +452,8 @@ public:
     //
     // the internal counter dictates how the address is incremented after a write.
     // see `set_counter_direction` for more information.
+    //
+    // cost: one bus operation
     void write_word(u8 v)
     {
         this->write_data(v);
@@ -436,6 +461,8 @@ public:
 
     // naive clear of the LCD by writing zeros to all pixels.
     // requires around 860 commands, which takes a noticable amount of time.
+    //
+    // cost: 900 bus operations
     void clear()
     {
         Direction d = this->counter_direction;
@@ -462,9 +489,11 @@ public:
     }
 
     // command: STRD
+    //
+    // cost: one bus operation
     Status read_status()
     {
-        return Status(this->read(ReadMode::READ_STATUS));
+        return Status(this->bus_read(ReadMode::READ_STATUS));
     }
 
     // read a word of data from the current address.
@@ -485,9 +514,20 @@ public:
     // once the dummy value is read, its ok to read multiple times.
     //
     // command: DARD
+    //
+    // cost: one bus operation
     u8 read_word()
     {
-        return this->read(ReadMode::READ_DATA);
+        return this->bus_read(ReadMode::READ_DATA);
+    }
+
+    // turn the given index on/off within the given word.
+    static u8 paint_pixel(u8 word, u8 index, bool color) {
+        if (color) {
+            return word | (0b10000000 >> index);
+        } else {
+            return word & ~(0b10000000 >> index);
+        }
     }
 
     // naive update of a single pixel at a given (x, y) location.
@@ -500,6 +540,8 @@ public:
     // which is about .6ms/pixel.
     //
     // so, for example, if you're targetting 16ms/frame, thats about 26 pixels.
+    //
+    // cost: seven bus operations
     void write_pixel(u8 x, u8 y, bool on)
     {
         if (x >= X_COUNT || y >= Y_COUNT) {
@@ -510,33 +552,173 @@ public:
         u8 column = x / 8;
         u8 bit = x % 8;
 
-        this->set_row(row);
-        this->set_column(column);
+        u8 existing = this->read_word_at(row, column);
 
-        u8 dummy = this->read_word();
-        u8 existing = this->read_word();
-
-        u8 next = existing;
-        if (on) {
-            next |= (0b10000000 >> bit);
-        } else {
-            next &= ~(0b10000000 >> bit);
-        }
+        u8 next = paint_pixel(existing, bit, on);
 
         if (next != existing) {
-            this->set_row(row);
-            this->set_column(column);
-            this->write_word(next);
+            this->write_word_at(row, column, next);
         }
     }
 
-    virtual void drawPixel(int16_t x, int16_t y, uint16_t color)
+    virtual void drawPixel(int16_t x, int16_t y, uint16_t color) override
     {
         if (x < 0 || x >= X_COUNT || y < 0 || y >= Y_COUNT) {
             return;
         }
 
         this->write_pixel(x, y, color != 0);
+    }
+
+    // read the word at the given coordinates.
+    //
+    // use only if you expect the coordinates to differ from the current adddress,
+    // because this routine updates coordinates and handles the dummy read.
+    // this is less efficient than sequential reads that rely on the counter.
+    //
+    // cost: four bus operations
+    u8 read_word_at(u8 row, u8 column)
+    {
+        this->set_row(row);
+        this->set_column(column);
+        this->read_word(); // dummy
+        return this->read_word();
+    }
+
+    // write word at the given coordinates.
+    //
+    // use only if you expect the coordinates to differ from the current adddress,
+    // because this routine updates coordinates.
+    // this is less efficient than sequential writes that rely on the counter.
+    //
+    // cost: three bus operations
+    void write_word_at(u8 row, u8 column, u8 word)
+    {
+        this->set_row(row);
+        this->set_column(column);
+        this->write_word(word);
+    }
+
+    virtual void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) override
+    {
+        if (w == 0) {
+            // zero width line: no pixels.
+            return;
+        }
+
+        if (w < 0) {
+            // enforce w to be positive.
+            x = x + w;
+            w = -w;
+        }
+
+        if (y < 0 || y >= Y_COUNT) {
+            // this is off the screen, low or high
+            return;
+        }
+
+        u8 start_x = x;
+        u8 end_x = x + w;
+
+        if (end_x < 0 || start_x >= X_COUNT) {
+            // all pixels off the side of the screen
+            return;
+        }
+
+        if (start_x < 0) {
+            // clamp line within the screen
+            start_x = 0;
+        }
+
+        if (end_x > X_COUNT) {
+            // clamp line within the screen
+            end_x = X_COUNT;
+        }
+
+        u8 row = y;
+        // when writing the middle of the line,
+        // we rely on the counter to increment horizontally.
+        this->set_counter_direction(Direction::ROW);
+
+        if ((start_x / 8) == (end_x / 8)) {
+            // all pixels in the same word
+            // 00xxxxxx00
+            //
+            // cost: seven bus operations
+            u8 column = start_x / 8;
+            u8 left_pixel = start_x % 8;
+            u8 right_pixel = end_x % 8;
+
+            u8 word = this->read_word_at(row, column);
+
+            for (u8 i = left_pixel; i < right_pixel; i++) {
+                word = paint_pixel(word, i, 0 != color);
+                x += 1;
+            }
+
+            this->write_word_at(row, column, word);
+        } else {
+            // multi-word line
+            // 00000xxx xxxxxxxx xxx00000
+            // 00000000 xxxxxxxx xxx00000
+            // 00000xxx xxxxxxxx 00000000
+            // 00000000 xxxxxxxx 00000000  (due to off-by-one above)
+            //
+            // cost: 16 + (#aligned words) bus operations (max: 28 total)
+
+            // unaligned left side
+            // 00000xxx ........
+            //
+            // cost: seven bus operations
+            if (0 != start_x % 8) {
+                u8 left_column = start_x / 8;
+                u8 left_pixel = start_x % 8;
+
+                u8 left_word = this->read_word_at(row, left_column);
+
+                for (u8 i = left_pixel; i < 8; i++) {
+                    left_word = paint_pixel(left_word, i, 0 != color);
+                    x += 1;
+                }
+
+                this->write_word_at(row, left_column, left_word);
+            }
+
+            // aligned middle
+            // xxxxxxxx
+            // cost: two + (#aligned words) bus operations (max: 14 total)
+            this->set_row(row);
+            this->set_column(x / 8);
+            while (x + 8 <= end_x) {
+                // we can blindly overwrite the word
+                // because all bits will be set.
+                //
+                // also, we rely on the counter to increment horizontally.
+                // due to the end_x being clamped to the screen dimensions,
+                // we can assume the counter doesn't wrap to the next line.
+                // this is (mostly) where the "fast" comes from.
+                this->write_word(0b11111111);
+                x += 8;
+            }
+
+            // unaligned right side
+            // ........ xxx00000
+            //
+            // cost: seven bus operations
+            if (0 != end_x % 8) {
+                u8 right_column = end_x / 8;
+                u8 right_pixel = end_x % 8;
+
+                u8 right_word = this->read_word_at(row, right_column);
+
+                for (u8 i = 0; i < right_pixel; i++) {
+                    right_word = paint_pixel(right_word, i, 0 != color);
+                    x += 1;
+                }
+
+                this->write_word_at(row, right_column, right_word);
+            }
+        }
     }
 };
 
