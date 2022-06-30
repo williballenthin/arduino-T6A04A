@@ -82,8 +82,8 @@ typedef struct CounterConfig {
 } CounterConfig;
 
 typedef enum WordLength {
-    WORD_LENGTH_8 = 1,
-    WORD_LENGTH_6 = 2,
+    WORD_LENGTH_8 = 8,
+    WORD_LENGTH_6 = 6,
 } WordLength;
 
 // used to hold OUTPUT, INPUT
@@ -171,6 +171,7 @@ private:
         } else if (m == WriteMode::WRITE_DATA) {
             di = HIGH;
         } else {
+            Serial.println("error: unexpected write mode");
             abort();
         }
 
@@ -239,6 +240,7 @@ private:
         } else if (ReadMode::READ_DATA == m) {
             digitalWrite(this->di, HIGH);
         } else {
+            Serial.println("error: unexpected read mode");
             abort();
         }
         this->set_bus_mode(INPUT);
@@ -384,6 +386,7 @@ public:
         } else if (wl == WordLength::WORD_LENGTH_6) {
             this->write_instruction(0b00000000);
         } else {
+            Serial.println("error: unexpected word length");
             abort();
         }
     }
@@ -447,6 +450,7 @@ public:
         } else if (o == CounterOrientation::COLUMN_WISE) {
             // pass: bit is unset
         } else {
+            Serial.println("error: unexpected counter orientation");
             abort();
         }
 
@@ -455,6 +459,7 @@ public:
         } else if (d == CounterDirection::DECREMENT) {
             // pass: bit is unset
         } else {
+            Serial.println("error: unexpected counter direction");
             abort();
         }
 
@@ -538,14 +543,14 @@ public:
     // cost: 796 bus operations
     void clear()
     {
-        this->set_counter_config(CounterOrientation::ROW_WISE, CounterDirection::INCREMENT);
+        this->set_counter_config(CounterOrientation::COLUMN_WISE, CounterDirection::INCREMENT);
         this->set_word_length(WordLength::WORD_LENGTH_8);
 
         // columns are longer than rows,
         // so clear column-wise.
-        for (int x = 0; x < (X_COUNT / 8); x++) {
-            this->set_row(0);
+        for (int x = 0; x < (X_COUNT / WordLength::WORD_LENGTH_8); x++) {
             this->set_column(x);
+            this->set_row(0);
             for (int y = 0; y < Y_COUNT; y++) {
                 this->write_word(0b00000000);
             }
@@ -615,6 +620,8 @@ public:
     }
 
     // naive update of a single pixel at a given (x, y) location.
+    //
+    // note this assumes 8-bit word size.
     //
     // note that this isn't really very fast: it must read the current word and the write it back.
     // if you have RAM to spare, then you should probably maintain a local screen buffer instead.
@@ -693,28 +700,44 @@ public:
             end_x = X_COUNT;
         }
 
-        u8 row = y;
-        // when writing the middle of the line,
-        // we rely on the counter to increment horizontally.
+        const u8 row = y;
+
+        this->set_word_length(WordLength::WORD_LENGTH_8);
         this->set_counter_config(CounterOrientation::ROW_WISE, CounterDirection::INCREMENT);
 
-        if ((start_x / 8) == (end_x / 8)) {
+        // statically allocate enough space for an entire row (12 bytes),
+        // even if we only use a few bytes,
+        // since this is trivially fast (stack allocation).
+        u8 words[X_COUNT / WordLength::WORD_LENGTH_8];
+
+        const u8 start_column = start_x / WordLength::WORD_LENGTH_8;
+        const u8 end_column = end_x / WordLength::WORD_LENGTH_8;
+
+        // read the affected row data (up to 12 bytes) in one scan
+        // relying on the counter to increment the address.
+        this->set_row(row);
+        this->set_column(start_column);
+        this->read_word(); // dummy
+        for (u8 i = start_column; i < end_column + 1; i++) {
+            words[i] = this->read_word();
+        }
+
+        // update the row contents
+        // to be written back out in one scan.
+        if (start_column == end_column) {
             // all pixels in the same word
             // 00xxxxxx00
-            //
-            // cost: seven bus operations
-            u8 column = start_x / 8;
-            u8 left_pixel = start_x % 8;
-            u8 right_pixel = end_x % 8;
 
-            u8 word = this->read_word_at(row, column);
+            u8 left_pixel = start_x % WordLength::WORD_LENGTH_8;
+            u8 right_pixel = end_x % WordLength::WORD_LENGTH_8;
+
+            u8 word = words[start_column];
 
             for (u8 i = left_pixel; i < right_pixel; i++) {
                 word = this->paint_pixel(word, i, 0 != color);
-                x += 1;
             }
 
-            this->write_word_at(row, column, word);
+            words[start_column] = word;
         } else {
             // multi-word line
             // 00000xxx xxxxxxxx xxx00000
@@ -728,34 +751,25 @@ public:
             // 00000xxx ........
             //
             // cost: seven bus operations
-            if (0 != start_x % 8) {
-                u8 left_column = start_x / 8;
-                u8 left_pixel = start_x % 8;
+            if (0 != start_x % WordLength::WORD_LENGTH_8) {
+                u8 start_pixel = start_x % WordLength::WORD_LENGTH_8;
+                u8 start_word = words[start_column];
 
-                u8 left_word = this->read_word_at(row, left_column);
-
-                for (u8 i = left_pixel; i < 8; i++) {
-                    left_word = this->paint_pixel(left_word, i, 0 != color);
+                for (u8 i = start_pixel; i < WordLength::WORD_LENGTH_8; i++) {
+                    start_word = this->paint_pixel(start_word, i, 0 != color);
                     x += 1;
                 }
 
-                this->write_word_at(row, left_column, left_word);
+                words[start_column] = start_word;
             }
+            // x is now aligned to the start of a word.
 
             // aligned middle
-            // xxxxxxxx
-            // cost: two + (#aligned words) bus operations (max: 14 total)
-            this->set_row(row);
-            this->set_column(x / 8);
+            // ........ xxxxxxxx ........
             while (x + 8 <= end_x) {
                 // we can blindly overwrite the word
                 // because all bits will be set.
-                //
-                // also, we rely on the counter to increment horizontally.
-                // due to the end_x being clamped to the screen dimensions,
-                // we can assume the counter doesn't wrap to the next line.
-                // this is (mostly) where the "fast" comes from.
-                this->write_word(0b11111111);
+                words[x / WordLength::WORD_LENGTH_8] = 0b11111111;
                 x += 8;
             }
 
@@ -763,19 +777,25 @@ public:
             // ........ xxx00000
             //
             // cost: seven bus operations
-            if (0 != end_x % 8) {
-                u8 right_column = end_x / 8;
-                u8 right_pixel = end_x % 8;
+            if (0 != end_x % WordLength::WORD_LENGTH_8) {
+                u8 end_pixel = end_x % WordLength::WORD_LENGTH_8;
+                u8 end_word = words[end_column];
 
-                u8 right_word = this->read_word_at(row, right_column);
-
-                for (u8 i = 0; i < right_pixel; i++) {
-                    right_word = this->paint_pixel(right_word, i, 0 != color);
+                for (u8 i = 0; i < end_pixel; i++) {
+                    end_word = this->paint_pixel(end_word, i, 0 != color);
                     x += 1;
                 }
 
-                this->write_word_at(row, right_column, right_word);
+                words[end_column] = end_word;
             }
+        }
+
+        // write the affected row data (up to 12 bytes) in one scan
+        // relying on the counter to increment the address.
+        this->set_row(row);
+        this->set_column(start_column);
+        for (u8 i = start_column; i < end_column + 1; i++) {
+            this->write_word(words[i]);
         }
     }
 };

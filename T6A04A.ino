@@ -59,7 +59,7 @@ static T6A04A lcd(
 void setup()
 {
     Serial.begin(9600);
-    //run_benchmarks(&lcd);
+    run_benchmarks(&lcd);
 
     lcd.init();
     lcd.clear();
