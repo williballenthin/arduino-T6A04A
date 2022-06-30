@@ -24,9 +24,7 @@
  *   17 RW
  *
  * TODO:
- *  - drawFastHLine: pre-read/write sequentially
  *  - drawFastVLine
- *  - drawRect
  */
 
 #ifndef T6A04A_H
