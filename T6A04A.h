@@ -543,18 +543,7 @@ public:
     // cost: 796 bus operations
     void clear()
     {
-        this->set_counter_config(CounterOrientation::COLUMN_WISE, CounterDirection::INCREMENT);
-        this->set_word_length(WordLength::WORD_LENGTH_8);
-
-        // columns are longer than rows,
-        // so clear column-wise.
-        for (int x = 0; x < (X_COUNT / WordLength::WORD_LENGTH_8); x++) {
-            this->set_column(x);
-            this->set_row(0);
-            for (int y = 0; y < Y_COUNT; y++) {
-                this->write_word(0b00000000);
-            }
-        }
+        this->fillScreen(0);
     }
 
     // command: STRD
@@ -834,6 +823,88 @@ public:
                 for (u8 i = start_column; i < end_column + 1; i++) {
                     this->write_word(words[i]);
                 }
+            }
+        }
+    }
+
+    virtual void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override
+    {
+        if (w == 0 || h == 0) {
+            return;
+        }
+
+        if (w < 0) {
+            // enforce w to be positive.
+            x = x + w;
+            w = -w;
+        }
+
+        if (h < 0) {
+            // enforce h to be positive.
+            y = y + h;
+            h = -h;
+        }
+
+        if (x >= X_COUNT) {
+            return;
+        }
+
+        if (y >= Y_COUNT) {
+            return;
+        }
+
+        u8 start_x = x;
+        u8 end_x = x + w;
+        u8 start_y = y;
+        u8 end_y = y + h;
+
+        if (end_x < 0) {
+            return;
+        }
+
+        if (end_y < 0) {
+            return;
+        }
+
+        if (start_x < 0) {
+            // clamp line within the screen
+            start_x = 0;
+        }
+
+        if (end_x > X_COUNT) {
+            // clamp line within the screen
+            end_x = X_COUNT;
+        }
+
+        if (start_y < 0) {
+            // clamp line within the screen
+            start_y = 0;
+        }
+
+        if (end_y > Y_COUNT) {
+            // clamp line within the screen
+            end_y = Y_COUNT;
+        }
+
+        for (u8 row = start_y; row < end_y; row++) {
+            this->drawFastHLine(start_x, row, end_x - start_x, color);
+        }
+    }
+
+    virtual void fillScreen(uint16_t color) override
+    {
+        this->set_counter_config(CounterOrientation::COLUMN_WISE, CounterDirection::INCREMENT);
+        this->set_word_length(WordLength::WORD_LENGTH_8);
+
+        const u8 word = 0 == color ? 0b00000000 : 0b11111111;
+
+        // columns are longer than rows,
+        // so clear column-wise for fewer total calls to set_row/column
+        for (int x = 0; x < (X_COUNT / WordLength::WORD_LENGTH_8); x++) {
+            this->set_column(x);
+            this->set_row(0);
+            for (int y = 0; y < Y_COUNT; y++) {
+                this->write_word(word);
             }
         }
     }

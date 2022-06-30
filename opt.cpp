@@ -162,8 +162,19 @@ class NaiveAlignedRectBenchmark : public Benchmark {
     }
 };
 
+// optimized 8x8 px rect at (0, 0)
+// Arduino Uno R3: 2.6ms/rect
+class FastAlignedRectBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "fast aligned rect";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->fillRect(0, 0, 8, 8, color);
+    }
+};
+
 // naive 8x8 px rect at (4, 4) via write_pixel
-// Arduino Uno R3: 40ms/rect
+// Arduino Uno R3: 40ms/rect (15x speedup)
 class NaiveUnalignedRectBenchmark : public Benchmark {
     virtual char* name() override {
         return "naive unaligned rect";
@@ -174,6 +185,27 @@ class NaiveUnalignedRectBenchmark : public Benchmark {
                 lcd->write_pixel(x + 4, y + 4, color);
             }
         }
+    }
+};
+
+// fast 8x8 px rect at (4, 4)
+// Arduino Uno R3: 7ms/rect (5x speedup)
+class FastUnalignedRectBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "fast unaligned rect";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->fillRect(2, 2, 8, 8, color);
+    }
+};
+
+// Arduino Uno R3: 61ms
+class FillScreenBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "fill screen";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->fillScreen(color);
     }
 };
 
@@ -189,7 +221,10 @@ static Benchmark *benchmarks[] = {
     new FastHLineBenchmark(),
     new NaiveVLineBenchmark(),
     new NaiveAlignedRectBenchmark(),
+    new FastAlignedRectBenchmark(),
     new NaiveUnalignedRectBenchmark(),
+    new FastUnalignedRectBenchmark(),
+    new FillScreenBenchmark(),
 };
 
 void run_benchmarks(T6A04A *lcd)

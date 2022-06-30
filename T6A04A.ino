@@ -65,22 +65,32 @@ void setup()
     lcd.clear();
 
     u8 y = 0;
-
-    for (u8 w = 0; w < 24; w++) {
+    for (u8 w = 0; w < 24; w++, y++) {
         lcd.drawFastHLine(0, y, w, true);
-        y++;
     }
 
-    for (u8 w = 0; w < 24; w++) {
+    for (u8 w = 0; w < 24; w++, y++) {
         lcd.drawFastHLine(2, y, w, true);
-        y++;
     }
 
-    for (u8 w = 0; w < 16; w++) {
+    for (u8 w = 0; w < 16; w++, y++) {
         lcd.drawFastHLine(8, y, w, true);
-        y++;
     }
 
+    y = 0;
+    for (u8 w = 0; w < 24; w += 2, y += 2) {
+        lcd.fillRect(32, y, w, 2, true);
+    }
+
+    for (u8 w = 0; w < 24; w += 2, y += 2) {
+        lcd.fillRect(34, y, w, 2, true);
+    }
+
+    for (u8 w = 0; w < 16; w += 2, y += 2) {
+        lcd.fillRect(40, y, w, 2, true);
+    }
+
+    // tick marks
     for (u8 i = 1; i < 12; i++) {
         lcd.drawPixel(i * 8, 0, true);
     }
