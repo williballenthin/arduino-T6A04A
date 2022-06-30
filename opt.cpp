@@ -36,6 +36,76 @@ public:
     }
 };
 
+// Arduino Uno R3: 0.08ms/op
+class SetColumnBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "set column";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->set_column(0);
+    }
+};
+
+// Arduino Uno R3: 0.08ms/op
+class SetRowBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "set row";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->set_row(0);
+    }
+};
+
+// Arduino Uno R3: 0.08ms/write
+class WriteWordBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "write word";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->write_word(0x00);
+    }
+};
+
+// Arduino Uno R3: 0.22ms/write
+class WriteWordAtBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "write word at";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->write_word_at(0, 0, 0x00);
+    }
+};
+
+// Arduino Uno R3: 0.08ms/read
+class ReadWordBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "read word";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->read_word();
+    }
+};
+
+// Arduino Uno R3: 0.37ms/read
+class ReadWordAtBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "read word at";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->read_word_at(0, 0);
+    }
+};
+
+// Arduino Uno R3: 0.62ms/write
+class WritePixelBenchmark : public Benchmark {
+    virtual char* name() override {
+        return "write pixel";
+    }
+    virtual void step(T6A04A *lcd, bool color) override {
+        lcd->write_pixel(0, 0, color);
+    }
+};
+
 //
 // naive horizontal line (96px) via write_pixel
 // Arduino Uno R3: 59ms/line
@@ -108,6 +178,13 @@ class NaiveUnalignedRectBenchmark : public Benchmark {
 };
 
 static Benchmark *benchmarks[] = {
+    new SetColumnBenchmark(),
+    new SetRowBenchmark(),
+    new WriteWordBenchmark(),
+    new WriteWordAtBenchmark(),
+    new ReadWordBenchmark(),
+    new ReadWordAtBenchmark(),
+    new WritePixelBenchmark(),
     new NaiveHLineBenchmark(),
     new FastHLineBenchmark(),
     new NaiveVLineBenchmark(),

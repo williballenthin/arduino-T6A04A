@@ -769,7 +769,13 @@ public:
             while (x + 8 <= end_x) {
                 // we can blindly overwrite the word
                 // because all bits will be set.
-                words[x / WordLength::WORD_LENGTH_8] = 0b11111111;
+
+                if (0 != color) {
+                    words[x / WordLength::WORD_LENGTH_8] = 0b11111111;
+                } else {
+                    words[x / WordLength::WORD_LENGTH_8] = 0b00000000;
+                }
+
                 x += 8;
             }
 
