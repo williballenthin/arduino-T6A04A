@@ -661,9 +661,9 @@ public:
         this->write_pixel(x, y, color != 0);
     }
 
-    // TODO: we can make this even faster by pre-reading the line sequentially
-    // and then writing it back on sequentially,
-    // at the expense of one byte allocation per word touched (max 12 bytes).
+    // optimized implementation of horizontal line drawing,
+    // taking advantage of the auto-incrementing counter and
+    // sequential 8-bit read/writes.
     virtual void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) override
     {
         if (w == 0) {
@@ -718,6 +718,7 @@ public:
         // in the general case, we need to read in the existing data,
         // update it, and write it back out.
         if (start_column == end_column) {
+            // case 1:
             // all pixels in the same word
             // 00xxxxxx00
 
@@ -730,6 +731,7 @@ public:
             }
             this->write_word_at(row, start_column, word);
         } else if (start_aligned && end_aligned) {
+            // case 2:
             // line with aligned edges
             // 00000000 xxxxxxxx ... xxxxxxxx 00000000
             this->set_row(row);
@@ -745,6 +747,7 @@ public:
                 x += 8;
             }
         } else {
+            // general case:
             // multi-word line with at least one unaligned edge
             // 00000xxx xxxxxxxx xxx00000
             // 00000000 xxxxxxxx xxx00000
@@ -823,7 +826,7 @@ public:
                 }
             }
 
-            // write the affected row data (up to 12 bytes) in one scan
+            // write the affected row data (up to 12 bytes) in one pass 
             // relying on the counter to increment the address.
             {
                 this->set_row(row);
