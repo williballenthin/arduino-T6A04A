@@ -66,25 +66,24 @@ void setup()
 
     u8 y = 0;
 
-    for (u8 i = 0; i < 16; i++) {
-        lcd.drawFastHLine(0, y, i, true);
+    for (u8 w = 0; w < 24; w++) {
+        lcd.drawFastHLine(0, y, w, true);
         y++;
     }
 
-    for (u8 i = 0; i < 16; i++) {
-        lcd.drawFastHLine(2, y, i, true);
+    for (u8 w = 0; w < 24; w++) {
+        lcd.drawFastHLine(2, y, w, true);
         y++;
     }
 
-    for (u8 i = 0; i < 16; i++) {
-        lcd.drawFastHLine(8, y, i, true);
+    for (u8 w = 0; w < 16; w++) {
+        lcd.drawFastHLine(8, y, w, true);
         y++;
     }
 
-    lcd.drawPixel(8, 0, true);
-    lcd.drawPixel(16, 0, true);
-    lcd.drawPixel(24, 0, true);
-    lcd.drawPixel(32, 0, true);
+    for (u8 i = 1; i < 12; i++) {
+        lcd.drawPixel(i * 8, 0, true);
+    }
 }
 
 void loop()

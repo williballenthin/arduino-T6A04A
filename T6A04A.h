@@ -1,7 +1,7 @@
 /*
  * Arduino driver for the T6A04A Dot Matrix LCD controller,
  * as used by the TI-83+ calculator.
- * 
+ *
  *  LCD Pinout use by TI-83+ to Toshiba T6A04A - 17 pin interface
  *  via: https://gist.github.com/parzivail/12ea33cef02794381a06265ff4ef129e
  *
@@ -22,7 +22,7 @@
  *   15 D1
  *   16 D0
  *   17 RW
- * 
+ *
  * TODO:
  *  - drawFastHLine: pre-read/write sequentially
  *  - drawFastVLine
@@ -263,13 +263,13 @@ private:
         digitalWrite(this->ce, LOW);
 
         return (
-            (d7 << 7) | 
-            (d6 << 6) | 
-            (d5 << 5) | 
-            (d4 << 4) | 
-            (d3 << 3) | 
-            (d2 << 2) | 
-            (d1 << 1) | 
+            (d7 << 7) |
+            (d6 << 6) |
+            (d5 << 5) |
+            (d4 << 4) |
+            (d3 << 3) |
+            (d2 << 2) |
+            (d1 << 1) |
             d0
         );
     }
@@ -349,15 +349,15 @@ public:
         this->set_z(0);
     }
 
-    // > When /RST = L, the reset function is executed and the following settings are mode. 
-    // > (3)     Display..............................OFF     
-    // > (4)     Word length..........................8 bits/word 
-    // > (5)     Counter mode.........................Y-counter (row-counter)/up mode 
+    // > When /RST = L, the reset function is executed and the following settings are mode.
+    // > (3)     Display..............................OFF
+    // > (4)     Word length..........................8 bits/word
+    // > (5)     Counter mode.........................Y-counter (row-counter)/up mode
     // > (6)     Y-(page) address.....................Page = 0 (column 0)
     // > (7)     X-address............................XAD  = 0 (row 0)
-    // > (8)     Z-address............................ZAD  = 0 
-    // > (9)     Op-amp1 (OPA1) ......................min     
-    // > (10)    Op-amp2 (OPA2) ......................min   
+    // > (8)     Z-address............................ZAD  = 0
+    // > (9)     Op-amp1 (OPA1) ......................min
+    // > (10)    Op-amp2 (OPA2) ......................min
     void reset() {
         digitalWrite(this->rst, LOW);
 
@@ -392,21 +392,21 @@ public:
     }
 
     // > When /STB = L, the T6A04A is in standby state.
-    // > The internal oscillator is stopped, power consumption is 
+    // > The internal oscillator is stopped, power consumption is
     // > reduced, and the power supply level for the LCD (VLC1 to VLC5) becomes VDD.
     void enable_standby() {
         digitalWrite(this->stb, STANDBY_ENABLE);
     }
 
     // > When /STB = L, the T6A04A is in standby state.
-    // > The internal oscillator is stopped, power consumption is 
+    // > The internal oscillator is stopped, power consumption is
     // > reduced, and the power supply level for the LCD (VLC1 to VLC5) becomes VDD.
     void disable_standby() {
         digitalWrite(this->stb, STANDBY_DISABLE);
     }
 
-    // > This command sets the contrast for the LCD. 
-    // > The LCD contrast can be set in 64 steps. 
+    // > This command sets the contrast for the LCD.
+    // > The LCD contrast can be set in 64 steps.
     //
     // command: SCE
     //
@@ -435,7 +435,7 @@ public:
     {
         this->write_instruction(0b00000010);
     }
-    
+
     void set_counter_config(CounterOrientation o, CounterDirection d)
     {
         if (this->counter_config.direction == d && this->counter_config.orientation == o) {
@@ -509,7 +509,7 @@ public:
     }
 
     // > This command sets the top row of the LCD screen, irrespective of the current [Y]-address.
-    // > For instance, when the Z-address is 32, the top row of the LCD screen is address 32 
+    // > For instance, when the Z-address is 32, the top row of the LCD screen is address 32
     // > of the display RAM, and the bottom row of the LCD screen is address 31 of the display RAM.
     //
     // wb: I believe you use can use this to implement scrolling.
@@ -576,9 +576,9 @@ public:
     //
     // after changing the address, ensure you read a dummy value first:
     //
-    // > However, when a data read is executed, the correct data does not appear on the first 
+    // > However, when a data read is executed, the correct data does not appear on the first
     // > data reading. Therefore, ensure that the T6A04A performs a dummy data read before
-    // > reading the actual data. 
+    // > reading the actual data.
     //
     // once the dummy value is read, its ok to read multiple times.
     //
@@ -705,25 +705,18 @@ public:
         this->set_word_length(WordLength::WORD_LENGTH_8);
         this->set_counter_config(CounterOrientation::ROW_WISE, CounterDirection::INCREMENT);
 
-        // statically allocate enough space for an entire row (12 bytes),
-        // even if we only use a few bytes,
-        // since this is trivially fast (stack allocation).
-        u8 words[X_COUNT / WordLength::WORD_LENGTH_8];
-
         const u8 start_column = start_x / WordLength::WORD_LENGTH_8;
         const u8 end_column = end_x / WordLength::WORD_LENGTH_8;
 
-        // read the affected row data (up to 12 bytes) in one scan
-        // relying on the counter to increment the address.
-        this->set_row(row);
-        this->set_column(start_column);
-        this->read_word(); // dummy
-        for (u8 i = start_column; i < end_column + 1; i++) {
-            words[i] = this->read_word();
-        }
+        bool start_aligned = 0 == (start_x % WordLength::WORD_LENGTH_8);
+        bool end_aligned = 0 == (end_x % WordLength::WORD_LENGTH_8);
 
-        // update the row contents
-        // to be written back out in one scan.
+        // there are two special cases:
+        //  1. only one word is partially overwritten, this takes one read and one write.
+        //  2. the line is word-aligned, we can blindly overwrite those words directly.
+        //
+        // in the general case, we need to read in the existing data,
+        // update it, and write it back out.
         if (start_column == end_column) {
             // all pixels in the same word
             // 00xxxxxx00
@@ -731,77 +724,114 @@ public:
             u8 left_pixel = start_x % WordLength::WORD_LENGTH_8;
             u8 right_pixel = end_x % WordLength::WORD_LENGTH_8;
 
-            u8 word = words[start_column];
-
+            u8 word = this->read_word_at(row, start_column);
             for (u8 i = left_pixel; i < right_pixel; i++) {
                 word = this->paint_pixel(word, i, 0 != color);
             }
-
-            words[start_column] = word;
-        } else {
-            // multi-word line
-            // 00000xxx xxxxxxxx xxx00000
-            // 00000000 xxxxxxxx xxx00000
-            // 00000xxx xxxxxxxx 00000000
-            // 00000000 xxxxxxxx 00000000  (due to off-by-one above)
-            //
-            // cost: 16 + (#aligned words) bus operations (max: 28 total)
-
-            // unaligned left side
-            // 00000xxx ........
-            //
-            // cost: seven bus operations
-            if (0 != start_x % WordLength::WORD_LENGTH_8) {
-                u8 start_pixel = start_x % WordLength::WORD_LENGTH_8;
-                u8 start_word = words[start_column];
-
-                for (u8 i = start_pixel; i < WordLength::WORD_LENGTH_8; i++) {
-                    start_word = this->paint_pixel(start_word, i, 0 != color);
-                    x += 1;
-                }
-
-                words[start_column] = start_word;
-            }
-            // x is now aligned to the start of a word.
-
-            // aligned middle
-            // ........ xxxxxxxx ........
+            this->write_word_at(row, start_column, word);
+        } else if (start_aligned && end_aligned) {
+            // line with aligned edges
+            // 00000000 xxxxxxxx ... xxxxxxxx 00000000
+            this->set_row(row);
+            this->set_column(start_column);
             while (x + 8 <= end_x) {
                 // we can blindly overwrite the word
                 // because all bits will be set.
-
                 if (0 != color) {
-                    words[x / WordLength::WORD_LENGTH_8] = 0b11111111;
+                    this->write_word(0b11111111);
                 } else {
-                    words[x / WordLength::WORD_LENGTH_8] = 0b00000000;
+                    this->write_word(0b00000000);
                 }
-
                 x += 8;
             }
+        } else {
+            // multi-word line with at least one unaligned edge
+            // 00000xxx xxxxxxxx xxx00000
+            // 00000000 xxxxxxxx xxx00000
+            // 00000xxx xxxxxxxx 00000000
 
-            // unaligned right side
-            // ........ xxx00000
-            //
-            // cost: seven bus operations
-            if (0 != end_x % WordLength::WORD_LENGTH_8) {
-                u8 end_pixel = end_x % WordLength::WORD_LENGTH_8;
-                u8 end_word = words[end_column];
+            // statically allocate enough space for an entire row (12 bytes),
+            // even if we only use a few bytes,
+            // since this is trivially fast (stack allocation).
+            u8 words[X_COUNT / WordLength::WORD_LENGTH_8];
 
-                for (u8 i = 0; i < end_pixel; i++) {
-                    end_word = this->paint_pixel(end_word, i, 0 != color);
-                    x += 1;
+            // read the start and end words.
+            // we don't care about the middle words,
+            // because we blindly overwrite them.
+            {
+                this->set_row(row);
+
+                this->set_column(start_column);
+                this->read_word(); // dummy
+                words[start_column] = this->read_word();
+
+                if (start_column + 1 != end_column) {
+                    // if the start and end columns are adjacent,
+                    // its faster to just read the next word directly.
+                    // otherwise, seek to end column.
+                    this->set_column(end_column);
+                    this->read_word(); // dummy
                 }
 
-                words[end_column] = end_word;
+                words[end_column] = this->read_word();
             }
-        }
 
-        // write the affected row data (up to 12 bytes) in one scan
-        // relying on the counter to increment the address.
-        this->set_row(row);
-        this->set_column(start_column);
-        for (u8 i = start_column; i < end_column + 1; i++) {
-            this->write_word(words[i]);
+            // update the row contents
+            // to be written back out in one pass.
+            {
+                // unaligned left side
+                // 00000xxx ........
+                if (0 != start_x % WordLength::WORD_LENGTH_8) {
+                    u8 start_pixel = start_x % WordLength::WORD_LENGTH_8;
+                    u8 start_word = words[start_column];
+
+                    for (u8 i = start_pixel; i < WordLength::WORD_LENGTH_8; i++) {
+                        start_word = this->paint_pixel(start_word, i, 0 != color);
+                        x += 1;
+                    }
+
+                    words[start_column] = start_word;
+                }
+                // x is now aligned to the start of a word.
+
+                // aligned middle
+                // ........ xxxxxxxx ........
+                while (x + 8 <= end_x) {
+                    // we can blindly overwrite the word
+                    // because all bits will be set.
+                    if (0 != color) {
+                        words[x / WordLength::WORD_LENGTH_8] = 0b11111111;
+                    } else {
+                        words[x / WordLength::WORD_LENGTH_8] = 0b00000000;
+                    }
+
+                    x += 8;
+                }
+
+                // unaligned right side
+                // ........ xxx00000
+                if (0 != end_x % WordLength::WORD_LENGTH_8) {
+                    u8 end_pixel = end_x % WordLength::WORD_LENGTH_8;
+                    u8 end_word = words[end_column];
+
+                    for (u8 i = 0; i < end_pixel; i++) {
+                        end_word = this->paint_pixel(end_word, i, 0 != color);
+                        x += 1;
+                    }
+
+                    words[end_column] = end_word;
+                }
+            }
+
+            // write the affected row data (up to 12 bytes) in one scan
+            // relying on the counter to increment the address.
+            {
+                this->set_row(row);
+                this->set_column(start_column);
+                for (u8 i = start_column; i < end_column + 1; i++) {
+                    this->write_word(words[i]);
+                }
+            }
         }
     }
 };

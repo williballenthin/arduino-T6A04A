@@ -108,7 +108,7 @@ class WritePixelBenchmark : public Benchmark {
 
 //
 // naive horizontal line (96px) via write_pixel
-// Arduino Uno R3: 59ms/line
+// Arduino Uno R3: 60ms/line
 //
 class NaiveHLineBenchmark : public Benchmark {
     virtual char* name() override {
@@ -123,7 +123,7 @@ class NaiveHLineBenchmark : public Benchmark {
 
 //
 // optimized horizontal line (96px) via drawFastHLine
-// Arduino Uno R3: 2.5ms/line (23x speedup over naive)
+// Arduino Uno R3: 1.2ms/line (23x speedup over naive)
 //
 class FastHLineBenchmark : public Benchmark {
     virtual char* name() override {
@@ -135,7 +135,7 @@ class FastHLineBenchmark : public Benchmark {
 };
 
 // naive vertical line (64px) via write_pixel
-// Arduino Uno R3: 39ms/line
+// Arduino Uno R3: 40ms/line
 class NaiveVLineBenchmark : public Benchmark {
     virtual char* name() override {
         return "naive vline";
@@ -148,7 +148,7 @@ class NaiveVLineBenchmark : public Benchmark {
 };
 
 // naive 8x8 px rect at (0, 0) via write_pixel
-// Arduino Uno R3: 39ms/rect
+// Arduino Uno R3: 40ms/rect
 class NaiveAlignedRectBenchmark : public Benchmark {
     virtual char* name() override {
         return "naive aligned rect";
@@ -163,7 +163,7 @@ class NaiveAlignedRectBenchmark : public Benchmark {
 };
 
 // naive 8x8 px rect at (4, 4) via write_pixel
-// Arduino Uno R3: 39ms/rect
+// Arduino Uno R3: 40ms/rect
 class NaiveUnalignedRectBenchmark : public Benchmark {
     virtual char* name() override {
         return "naive unaligned rect";
