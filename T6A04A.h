@@ -1,6 +1,29 @@
 /*
+ * Arduino driver for the T6A04A Dot Matrix LCD controller,
+ * as used by the TI-83+ calculator.
+ * 
+ *  LCD Pinout use by TI-83+ to Toshiba T6A04A - 17 pin interface
+ *  via: https://gist.github.com/parzivail/12ea33cef02794381a06265ff4ef129e
+ *
+ *   1  VCC [Fat wire 1]   +5
+ *   2  GND [Fat wire 2]   GND
+ *   3  RST
+ *   4  NC
+ *   5  NC
+ *   6  STB
+ *   7  DI
+ *   8  CE
+ *   9  D7
+ *   10 D6
+ *   11 D5
+ *   12 D4
+ *   13 D3
+ *   14 D2
+ *   15 D1
+ *   16 D0
+ *   17 RW
+ * 
  * TODO:
- *  - refactor counter handling
  *  - drawFastHLine: pre-read/write sequentially
  *  - drawFastVLine
  *  - drawRect
@@ -15,29 +38,14 @@
 typedef unsigned char u8;
 typedef u8 pin;
 
-// LCD Pinout (Toshiba T6A04A - 17 pin interface)
-//
-//    1  VCC [Fat wire 1]       +5
-//    2  GND [Fat wire 2]       GND
-//    3  RST                    D14
-//    4  NC
-//    5  NC
-//    6  STB                    D15
-//    7  DI                     D2
-//    8  CE                     D3
-//    9  D7                     D4
-//    10 D6                     D5
-//    11 D5                     D6
-//    12 D4                     D7
-//    13 D3                     D8
-//    14 D2                     D9
-//    15 D1                     D10
-//    16 D0                     D11
-//    17 RW                     D12
-
-const u8 ROW_COUNT = 64;
-const u8 Y_COUNT = ROW_COUNT;
+const u8 Y_COUNT = 64;
+// the LCD used by TI-83+ has only 96 pixels horizontally,
+// although the driver technically supports up to 128 pixels.
 const u8 X_COUNT = 96;
+
+const u8 ROW_COUNT = Y_COUNT;
+// can't compute COLUMN_COUNT because this depends on the display word size
+// which is configurable between 6 and 8 bits.
 
 const u8 STANDBY_ENABLE = LOW;
 const u8 STANDBY_DISABLE = HIGH;
@@ -54,10 +62,24 @@ typedef enum ReadMode {
     READ_DATA = 2,
 } ReadMode;
 
-typedef enum Direction {
-    COLUMN = 1,
-    ROW = 2,
-} Direction;
+typedef enum CounterOrientation {
+    // counter moves left and right.
+    COLUMN_WISE = 1,
+    // counter moves up and down.
+    ROW_WISE = 2,
+} CounterOrientation;
+
+typedef enum CounterDirection {
+    // counter moves to the left or down.
+    INCREMENT = 1,
+    // counter moves to the right or up.
+    DECREMENT = 2,
+} CounterDirection;
+
+typedef struct CounterConfig {
+    CounterOrientation orientation;
+    CounterDirection direction;
+} CounterConfig;
 
 typedef enum WordLength {
     WORD_LENGTH_8 = 1,
@@ -92,19 +114,32 @@ public:
         return (this->inner & 0b00100000) != 0;
     }
 
-    Direction counter_direction() const
+    CounterOrientation counter_orientation() const
     {
         if ((this->inner & 0b00000010) != 0) {
-            return Direction::ROW;
+            return CounterOrientation::ROW_WISE;
         } else {
-            return Direction::COLUMN;
+            return CounterOrientation::COLUMN_WISE;
         };
     }
 
-    // up/down is the LSB
-    // 1: up, 0: down
-};
+    CounterDirection counter_direction() const
+    {
+        if ((this->inner & 0b00000001) != 0) {
+            return CounterDirection::INCREMENT;
+        } else {
+            return CounterDirection::DECREMENT;
+        };
+    }
 
+    CounterConfig counter_config() const
+    {
+        return CounterConfig {
+            this->counter_orientation(),
+            this->counter_direction(),
+        };
+    }
+};
 
 
 class T6A04A : public Adafruit_GFX
@@ -124,7 +159,7 @@ private:
     pin d0;
     pin rw; // pin 17
 
-    Direction counter_direction;
+    CounterConfig counter_config;
     WordLength word_length;
     IOMode io_mode;
 
@@ -141,7 +176,6 @@ private:
 
         digitalWrite(this->ce, LOW);
         digitalWrite(this->di, di);
-        digitalWrite(this->rw, RW_WRITE);
         this->set_bus_mode(OUTPUT);
 
         digitalWrite(this->d0, HIGH && (v & B00000001));
@@ -175,6 +209,15 @@ private:
     void set_bus_mode(IOMode m)
     {
         if (m != this->io_mode) {
+            if (OUTPUT == m) {
+                digitalWrite(this->rw, RW_WRITE);
+            } else if (INPUT == m) {
+                digitalWrite(this->rw, RW_READ);
+            } else {
+                Serial.println("error: unexpected IO mode");
+                abort();
+            }
+
             pinMode(this->d0, m);
             pinMode(this->d1, m);
             pinMode(this->d2, m);
@@ -198,7 +241,6 @@ private:
         } else {
             abort();
         }
-        digitalWrite(this->rw, RW_READ);
         this->set_bus_mode(INPUT);
 
         digitalWrite(this->ce, HIGH);
@@ -267,7 +309,7 @@ public:
           d1(d1),
           d0(d0),
           rw(rw),
-          counter_direction(Direction::ROW),
+          counter_config(CounterConfig { CounterOrientation::ROW_WISE, CounterDirection::INCREMENT }),
           word_length(WordLength::WORD_LENGTH_8),
           io_mode(OUTPUT),
           Adafruit_GFX(96, 64)
@@ -298,7 +340,8 @@ public:
 
         this->enable_display();
         this->set_contrast(48);
-        this->set_counter_direction(Direction::ROW);
+        this->set_counter_orientation(CounterOrientation::ROW_WISE);
+        this->set_counter_direction(CounterDirection::INCREMENT);
         this->set_column(0);
         this->set_row(0);
         this->set_z(0);
@@ -389,21 +432,43 @@ public:
     {
         this->write_instruction(0b00000010);
     }
-
-    // TODO: refactor: x/y up/down
-    void set_counter_direction(Direction d)
+    
+    void set_counter_config(CounterOrientation o, CounterDirection d)
     {
-        this->counter_direction = d;
-        if (d == Direction::COLUMN) {
-            // TODO: bit 0x1 is used for something
-            // called "up" in the TILCD code.
-            // but I don't understand it enough to document or expose it yet.
-            this->write_instruction(0b00000101);
-        } else if (d == Direction::ROW) {
-            this->write_instruction(0b00000111);
+        if (this->counter_config.direction == d && this->counter_config.orientation == o) {
+            return;
+        }
+
+        this->counter_config = CounterConfig { o, d };
+        u8 command = 0b00000100;
+
+        if (o == CounterOrientation::ROW_WISE) {
+            command |= 0b00000010;
+        } else if (o == CounterOrientation::COLUMN_WISE) {
+            // pass: bit is unset
         } else {
             abort();
         }
+
+        if (d == CounterDirection::INCREMENT) {
+            command |= 0b00000001;
+        } else if (d == CounterDirection::DECREMENT) {
+            // pass: bit is unset
+        } else {
+            abort();
+        }
+
+        this->write_instruction(command);
+    }
+
+    void set_counter_orientation(CounterOrientation o)
+    {
+        this->set_counter_config(o, this->counter_config.direction);
+    }
+
+    void set_counter_direction(CounterDirection d)
+    {
+        this->set_counter_config(this->counter_config.orientation, d);
     }
 
     // set the column coordinate for subsequent call to `write_byte`.
@@ -467,32 +532,24 @@ public:
     }
 
     // naive clear of the LCD by writing zeros to all pixels.
-    // requires around 860 commands, which takes a noticable amount of time.
     //
-    // cost: 900 bus operations
+    // this may change the counter config and word length.
+    //
+    // cost: 796 bus operations
     void clear()
     {
-        Direction d = this->counter_direction;
-        WordLength wl = this->word_length;
+        this->set_counter_config(CounterOrientation::ROW_WISE, CounterDirection::INCREMENT);
+        this->set_word_length(WordLength::WORD_LENGTH_8);
 
-        if (d != Direction::ROW) {
-            this->set_counter_direction(Direction::ROW);
-        }
-
-        if (wl != WordLength::WORD_LENGTH_8) {
-            this->set_word_length(WordLength::WORD_LENGTH_8);
-        }
-
-        for (int y = 0; y < ROW_COUNT; y++) {
-            this->set_row(y);
-            this->set_column(0);
-            for (int x = 0; x < (X_COUNT / 8); x++) {
+        // columns are longer than rows,
+        // so clear column-wise.
+        for (int x = 0; x < (X_COUNT / 8); x++) {
+            this->set_row(0);
+            this->set_column(x);
+            for (int y = 0; y < Y_COUNT; y++) {
                 this->write_word(0b00000000);
             }
         }
-
-        this->set_counter_direction(d);
-        this->set_word_length(wl);
     }
 
     // command: STRD
@@ -639,7 +696,7 @@ public:
         u8 row = y;
         // when writing the middle of the line,
         // we rely on the counter to increment horizontally.
-        this->set_counter_direction(Direction::ROW);
+        this->set_counter_config(CounterOrientation::ROW_WISE, CounterDirection::INCREMENT);
 
         if ((start_x / 8) == (end_x / 8)) {
             // all pixels in the same word

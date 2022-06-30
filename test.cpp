@@ -13,7 +13,12 @@ bool test_T6A04A(T6A04A *lcd)
     //
     Status s = lcd->read_status();
 
-    if (s.counter_direction() != Direction::ROW) {
+    if (s.counter_orientation() != CounterOrientation::ROW_WISE) {
+        Serial.println("FAIL: unexpected counter orientation");
+        return false;
+    }
+
+    if (s.counter_direction() != CounterDirection::INCREMENT) {
         Serial.println("FAIL: unexpected counter direction");
         return false;
     }

@@ -23,7 +23,8 @@
 #define D18 (18) // A4
 #define D19 (19) // A5
 
-#define LCD_RST D14
+// my personal pinout on an Arduino Uno R3
+#define LCD_RST D14  // D0 is serial IO pin, D13 is LED_BUILTIN
 #define LCD_STB D15
 #define LCD_DI D2
 #define LCD_CE D3
@@ -52,10 +53,6 @@ static T6A04A lcd(
     LCD_D0,
     LCD_RW
 );
-
-// 6 pixels wide, 8 pixels tall
-const u8 CHARACTER_WIDTH = 6;
-const u8 CHARACTER_HEIGHT = 8;
 
 #include "opt.h"
 
